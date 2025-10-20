@@ -1,0 +1,131 @@
+name: DOCKER CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [ main ]
+    
+env:
+  DOCKER_IMAGE: adeel1144/docker-cicd
+  NODE_VERSION: '18'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Run Tests
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: RUN tests
+      run: npm test
+
+    - name: Generate test coverage
+      run: npm test -- --coverage
+
+   # Job 2: Build and Push Docker image
+   build-and-push:
+     runs-on: ubuntu-latest
+     needs: test
+     name: Build and Push Docker Image
+
+     steps:
+     - name: Checkout code
+       uses: actions/checkout@v4
+
+     - name: Set up Docker Buildx
+       uses: docker/setup-buildx-action@v3
+
+     - name: Login to Docker Hub 
+       uses: docker/login-action@v3
+
+       with:
+         username: ${{secrets.DOCKER_USERNAME}}
+         password: ${{secrets.DOCKER_PASSWORD}}
+
+     - name: Extract metadata
+       id: meta
+       uses: docker/metadata-actions@v5
+       with:
+         image: ${{ env.DOCKER_IMAGE }}
+         tags: |
+           type=ref,event=branch
+           type=ref,event=pr
+           type=sha,prefix={{branch}}-
+           type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.metam.outputs.labels }}
+          cache-from: type=gha
+          cace-to: type=gha,mode=max
+
+    # Job 3: Security scan
+    security-scan:
+      runs-on: ubuntu-latest
+      needs: build-and-push
+      name: Security Scan
+
+      steps:
+      - name: Run Tricy vlunerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_IMAGE }}:latest
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Uplaod Trivy scan results
+        uses: github/codeql-action/upload-sari@v3
+        if: always()
+        with:
+          sarif_file: 'tricy-results.sarif'
+
+    # Job 4: Deploy to staging (simulatio)
+    deploy-staging:
+      runs-on: ubuntu-latest
+      needs: [build-and-push, security-scan]
+      name: Deploy to Staging
+      if: github.ref == 'refs/heads/main'
+
+      steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to staging environment
+        run: | 
+          echo "Deploying to stagin environment"
+          echo "Image: ${{ env.DOCKER_IMAGE }}:latest"
+          echo "Deployment would happen here in a real scenario"
+
+          # Simulate deployment verification
+          echo "Deployment verification passed"
+          echo "Application available at: https://staging.example.com"
+
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests"
+
+      - name: Notify deployment success
+        run: |
+          echo "Sending deployment notification..."
+          echo "Deployment 
+
+
+
